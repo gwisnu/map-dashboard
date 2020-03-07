@@ -9,29 +9,26 @@ import matplotlib as mpl
 import gdal, subprocess
 
 #In/Out variable
-
+path = "D:\playground\map-dashboard"
+file_basemap = os.path.join(path,"data\Carto-Voyager.xml")
+file_csv = os.path.join(path,"data\earthquakes_2019.csv")
+style_layer_gempa = os.path.join(path,"data\style_gempa.qml")
+qpt_path = os.path.join(path,"img/report_template_A4.qpt")
+output_pdf = os.path.join(path,"report/report_A4.pdf")
 #CRS definition
 wgs84 = QgsCoordinateReferenceSystem(4326)
 
 #Layer definition
-path = "D:\playground\map-dashboard"
-file_basemap = os.path.join(path,"data\Carto-Voyager.xml")
 layer_basemap = iface.addRasterLayer(file_basemap, "", "gdal")
-
-file_csv = os.path.join(path,"data\gempabumi_2019.csv")
 layer_gempa = iface.addVectorLayer(file_csv, "csv", "ogr")
 layer_gempa.setCrs(wgs84, True)
 
 #apply style to layer gempa
-style_layer_gempa = os.path.join(path,"style_gempa.qml")
 layer_gempa.loadNamedStyle(style_layer_gempa)
 layer_gempa.triggerRepaint()
 
-#iface.mapCanvas().setExtent(ext)
-#iface.mapCanvas().refresh()
-
 #Create Pandas DataFrame for statistics
-df = pd.read_csv(file_csv)
+df = pd.read_csv(file_csv,sep=';')
 df['datetime'] = pd.to_datetime(df['time'], format='%Y-%m-%dT%H:%M:%S.%fZ') #convert string as datetime format
 df2019 = df[(df['datetime']>dt.date(2019,1,1)) & (df['datetime']<dt.date(2019,12,31))]  #filter datetime
 
@@ -51,7 +48,7 @@ plt.box(False)
 #plt.grid(axis='y')
 fig = plt.gcf()
 #save chart to image file
-chart_count_mag = os.path.join(path,"../img/chart_count_mag.jpg")
+chart_count_mag = os.path.join(path,"img/chart_count_mag.jpg")
 fig.set_size_inches(12, 1.7)
 fig.savefig(chart_count_mag, dpi=300, bbox_inches = "tight", facecolor='#f4f4f4')
 plt.close(fig)
@@ -65,12 +62,12 @@ plt.box(False)
 plt.grid(axis='y')
 fig = plt.gcf()
 plt.gca().invert_yaxis()
-cbar= plt.colorbar()
-cbar.set_label("depth (km)", labelpad=+1)
+#cbar= plt.colorbar()
+#cbar.set_label("depth (km)", labelpad=+1)
 #save chart to image file
 fig.set_size_inches(12, 1.7)
-chart_avg_depth = os.path.join(path,'../img/chart_avg_depth.jpg')
-fig.savefig(chart_avg_depth, dpi=300, bbox_inches = "tight",facecolor='#f4f4f4')
+chart_avg_depth = os.path.join(path,'img/chart_avg_depth.jpg')
+fig.savefig(chart_avg_depth, dpi=300, bbox_inches = "tight", facecolor='#f4f4f4')
 plt.close(fig)
 
 ###LAYOUT COMPOSING
@@ -86,8 +83,8 @@ for layout in layouts_list:
     if layout.name() == layoutName:
         manager.removeLayout(layout)
 
+
 # read template content
-qpt_path = os.path.join(path,'../img/report_template_A4.qpt') 
 template_file = open(qpt_path)
 template_content = template_file.read()
 template_file.close()
@@ -98,10 +95,14 @@ composition.loadFromTemplate(document, QgsReadWriteContext())
 project.layoutManager().addLayout(composition)
 layout = QgsProject.instance().layoutManager().layoutByName("Report A4")
 
+# call functions in utils
+sys.path.append(path)
+from utils import *
+
 # add label max_mag, avg_depth, count_eq
-addLabel(layout, str(max_mag), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 28.852, 166) #Magnitude  label
-addLabel(layout, str(round(avg_depth,2)), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 93, 166) #Depth  label
-addLabel(layout, str(count_eq), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 156, 166) #Magnitude  label
+addLabel(layout, str(max_mag), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 28.852, 125) #Magnitude  label
+addLabel(layout, str(round(avg_depth,2)), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 93, 125) #Depth  label
+addLabel(layout, str(count_eq), 'Arial', 36, QFont.Bold, False, '#21908d', 0,0, 156, 125) #Magnitude  label
 
 #get extent from layer gempa
 ext = layer_gempa.extent()
@@ -110,18 +111,27 @@ xmax = ext.xMaximum()
 ymin = ext.yMinimum()
 ymax = ext.yMaximum()
 
-#add map
+#add map to layout
 map = QgsLayoutItemMap(layout)
 map.setRect(20, 20, 20, 20)
 map.setExtent(ext)
 layout.addLayoutItem(map)
 #map.setExtent(QgsRectangle(x_min,y_min,x_max,y_max))
-map.setFrameEnabled(True)
+#map.setFrameEnabled(True)
 map.setFrameStrokeWidth(QgsLayoutMeasurement(0.2,QgsUnitTypes.LayoutMillimeters))
 map.attemptMove(QgsLayoutPoint(9.275, 22, QgsUnitTypes.LayoutMillimeters))
 map.attemptResize(QgsLayoutSize(191.118, 88, QgsUnitTypes.LayoutMillimeters))
 scale = map.scale()
 
 # add chart 1
-addImage(layout,chart_count_mag,10, 202, 190, 34) #chart1: donut chart dumping point
+addImage(layout,chart_count_mag,10, 175, 190, 34) #chart1: donut chart dumping point
+addImage(layout,chart_avg_depth,10, 237, 190, 34) #chart1: donut chart dumping point
 
+# export layout to file 
+# creats a QgsLayoutExporter object
+exporter = QgsLayoutExporter(layout)
+settings = exporter.PdfExportSettings()
+settings.rasterizeWholeImage = False
+#this exports a pdf of the layout object
+exporter.exportToPdf(output_pdf, settings)
+#exporter.exportToImage(output_png, QgsLayoutExporter.ImageExportSettings())
